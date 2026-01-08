@@ -27,6 +27,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -35,88 +36,67 @@ import (
 	"testing"
 	"time"
 
-	"github.com/wtsi-hgi/statter/internal"
+	"github.com/wtsi-hgi/statter/client"
+	. "github.com/wtsi-hgi/statter/convey"
+	internalclient "github.com/wtsi-hgi/statter/internal/client"
+	"github.com/wtsi-hgi/statter/internal/helpers"
 )
 
-func TestRun(t *testing.T) {
-	a, b, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+func TestStatRun(t *testing.T) {
+	Convey("You can stat files", t, func() {
+		a, b, err := os.Pipe()
+		So(err, ShouldBeNil)
 
-	c, d, err := os.Pipe()
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+		c, d, err := os.Pipe()
+		So(err, ShouldBeNil)
 
-	errCh := make(chan error)
+		errCh := make(chan error)
 
-	go startRun(internal.ReadWriter{Reader: a, WriteCloser: d}, errCh)
+		go startRun(internalclient.ReadWriter{Reader: a, WriteCloser: d}, errCh)
 
-	local := internal.ReadWriter{Reader: c, WriteCloser: b}
+		local := internalclient.ReadWriter{Reader: c, WriteCloser: b}
 
-	tmp := t.TempDir()
+		tmp := t.TempDir()
 
-	testPathA := filepath.Join(tmp, "aFile")
-	testPathB := filepath.Join(tmp, "bFile")
+		testPathA := filepath.Join(tmp, "aFile")
+		testPathB := filepath.Join(tmp, "bFile")
 
-	if err := os.WriteFile(testPathA, []byte("some data"), 0600); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+		So(os.WriteFile(testPathA, []byte("some data"), 0600), ShouldBeNil)
+		So(os.WriteFile(testPathB, []byte("some data"), 0600), ShouldBeNil)
 
-	if err := os.WriteFile(testPathB, []byte("some data"), 0600); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+		fiA, err := os.Lstat(testPathA)
+		So(err, ShouldBeNil)
 
-	fiA, err := os.Lstat(testPathA)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+		fiB, err := os.Lstat(testPathB)
+		So(err, ShouldBeNil)
 
-	fiB, err := os.Lstat(testPathB)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+		inode, err := internalclient.Stat(local, testPathA)
+		So(err, ShouldBeNil)
 
-	inode, err := internal.Stat(local, testPathA)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+		So(fiA.Sys().(*syscall.Stat_t).Ino, ShouldEqual, inode)
 
-	if i := fiA.Sys().(*syscall.Stat_t).Ino; inode != i {
-		t.Errorf("incorrect inodeA, expected %d, got %d", i, inode)
-	}
+		inode, err = internalclient.Stat(local, testPathB)
+		So(err, ShouldBeNil)
 
-	inode, err = internal.Stat(local, testPathB)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+		So(fiB.Sys().(*syscall.Stat_t).Ino, ShouldEqual, inode)
 
-	if i := fiB.Sys().(*syscall.Stat_t).Ino; inode != i {
-		t.Errorf("incorrect inodeB, expected %d, got %d", i, inode)
-	}
+		inode, err = internalclient.Stat(local, "/not/a/path")
+		So(err, ShouldBeNil)
+		So(inode, ShouldEqual, 0)
 
-	inode, err = internal.Stat(local, "/not/a/path")
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	} else if inode != 0 {
-		t.Fatalf("expecting inode 0, got %d", inode)
-	}
+		stat = func(string) (os.FileInfo, error) {
+			time.Sleep(time.Second * 5)
 
-	stat = func(string) (os.FileInfo, error) {
-		time.Sleep(time.Second * 5)
+			return nil, ErrTimeout
+		}
 
-		return nil, ErrTimeout
-	}
-
-	if _, err = internal.Stat(local, testPathA); !errors.Is(err, io.EOF) {
-		t.Fatalf("expecting io.EOF, got %v", err)
-	}
+		_, err = internalclient.Stat(local, testPathA)
+		So(err, ShouldEqual, io.EOF)
+	})
 }
 
 func startRun(remote io.ReadWriteCloser, errCh chan error) {
 	conn = remote
-
 	err := run()
 
 	remote.Close()
@@ -124,34 +104,97 @@ func startRun(remote io.ReadWriteCloser, errCh chan error) {
 	errCh <- err
 }
 
-func TestMain(t *testing.T) {
-	tmp := t.TempDir()
-	statter := filepath.Join(tmp, "statter")
+var statter string
+
+func TestMain(m *testing.M) {
+	tmp, err := os.MkdirTemp("", "")
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+
+	statter = filepath.Join(tmp, "statter")
+
+	var code int
 
 	if err := exec.Command("go", "build", "-o", statter).Run(); err != nil {
-		t.Fatalf("unexpected error: %s", err)
+		fmt.Fprintf(os.Stderr, "unexpected error: %s", err)
+
+		code = 1
+	} else {
+		code = m.Run()
 	}
 
-	conn, pid, err := internal.CreateStatter(statter)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+	os.RemoveAll(tmp)
+	os.Exit(code)
+}
 
-	_, err = internal.Stat(conn, statter)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+func TestStat(t *testing.T) {
+	Convey("You can use the stat client to stat files", t, func() {
+		t.TempDir()
 
-	p, err := os.FindProcess(pid)
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+		conn, pid, err := internalclient.CreateStatter(statter)
+		So(err, ShouldBeNil)
 
-	if err = p.Kill(); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
+		_, err = internalclient.Stat(conn, statter)
+		So(err, ShouldBeNil)
 
-	if _, err = internal.Stat(conn, statter); !errors.Is(err, io.EOF) {
-		t.Fatalf("expecting EOF, got %s", err)
-	}
+		p, err := os.FindProcess(pid)
+		So(err, ShouldBeNil)
+
+		So(p.Kill(), ShouldBeNil)
+
+		_, err = internalclient.Stat(conn, statter)
+		So(err, ShouldEqual, io.EOF)
+	})
+}
+
+func TestWalker(t *testing.T) {
+	Convey("With a test directory to walk", t, func() {
+		tmp := t.TempDir()
+		paths := helpers.FillDirWithFiles(t, tmp, 3, nil)
+
+		foundPaths := make([]string, 0, len(paths))
+		gotErrors := []string{}
+
+		So(client.WalkPath(statter, tmp, func(entry *internalclient.Dirent) error {
+			foundPaths = append(foundPaths, entry.Path)
+
+			return nil
+		}, func(path string, err error) error {
+			gotErrors = append(gotErrors, fmt.Sprintf("%s: %s", path, err))
+
+			return nil
+		}), ShouldBeNil)
+		So(len(gotErrors), ShouldEqual, 0)
+		So(len(foundPaths), ShouldEqual, len(paths)+1)
+		So(foundPaths[0], ShouldEqual, tmp+"/")
+		So(foundPaths[1:], ShouldResemble, paths)
+
+		So(os.Chmod(filepath.Join(tmp, "1"), 0), ShouldBeNil)
+
+		Reset(func() { os.Chmod(filepath.Join(tmp, "1"), 0700) })
+
+		So(client.WalkPath(statter, tmp, func(entry *internalclient.Dirent) error {
+			return nil
+		}, func(path string, err error) error {
+			gotErrors = append(gotErrors, fmt.Sprintf("%s: %s", path, err))
+
+			return nil
+		}), ShouldBeNil)
+		So(len(gotErrors), ShouldEqual, 1)
+		So(gotErrors[0], ShouldEqual, tmp+"/1/: permission denied")
+
+		err := client.WalkPath(statter, tmp, func(entry *internalclient.Dirent) error {
+			return errors.New("bad!")
+		}, func(path string, err error) error {
+			return nil
+		})
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldEqual, "bad!")
+
+		err = client.WalkPath(statter, "", nil, nil)
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldEqual, "invalid argument")
+	})
 }

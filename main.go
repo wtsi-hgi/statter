@@ -32,15 +32,17 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sync"
 	"syscall"
 	"time"
 
-	"github.com/wtsi-hgi/statter/internal"
+	"github.com/wtsi-hgi/statter/internal/client"
+	"github.com/wtsi-hgi/statter/walk"
 )
 
 const lengthSize = 2
 
-var conn io.ReadWriter = internal.ReadWriter{Reader: os.Stdin, WriteCloser: os.Stdout}
+var conn io.ReadWriter = client.ReadWriter{Reader: os.Stdin, WriteCloser: os.Stdout}
 
 var ErrTimeout = errors.New("timeout")
 
@@ -55,6 +57,16 @@ func main() {
 }
 
 func run() error {
+	if len(os.Args) == 2 {
+		doWalk(os.Args[1])
+
+		return nil
+	}
+
+	return statLoop()
+}
+
+func statLoop() error {
 	timeout := time.Second
 
 	flag.DurationVar(&timeout, "timeout", timeout, "timeout to wait for stat to finish")
@@ -102,4 +114,51 @@ func doStat(path string, ch chan uint64) {
 	} else {
 		ch <- fi.Sys().(*syscall.Stat_t).Ino
 	}
+}
+
+type walkWriter struct {
+	mu  sync.Mutex
+	buf [4096 + 8 + 4 + 2]byte
+}
+
+func doWalk(path string) {
+	var w walkWriter
+
+	if err := walk.New(w.pathCallback, true, false).Walk(path, w.errCallback); err != nil {
+		w.writeError(err)
+	}
+}
+
+func (w *walkWriter) pathCallback(entry *walk.Dirent) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	buf := entry.AppendTo(w.buf[:14])
+	binary.LittleEndian.AppendUint16(w.buf[:0], uint16(len(buf))-14)
+	binary.LittleEndian.AppendUint64(w.buf[:2], entry.Inode)
+	binary.LittleEndian.AppendUint32(w.buf[:10], uint32(entry.Type()))
+
+	_, err := os.Stdout.Write(buf)
+
+	return err
+}
+
+func (w *walkWriter) errCallback(path string, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	binary.LittleEndian.AppendUint16(w.buf[:0], uint16(len(path)))
+	binary.LittleEndian.AppendUint64(w.buf[:2], 0)
+	binary.LittleEndian.AppendUint32(w.buf[:10], uint32(err.(syscall.Errno)))
+
+	os.Stdout.Write(append(w.buf[:14], path...))
+}
+
+func (w *walkWriter) writeError(err error) {
+	w.buf[0] = 0
+	w.buf[1] = 0
+	errMsg := err.Error()
+
+	binary.LittleEndian.AppendUint16(w.buf[:2], uint16(len(errMsg)))
+	os.Stdout.Write(append(w.buf[:14], errMsg...))
 }
