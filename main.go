@@ -66,40 +66,64 @@ func run() error {
 	return statLoop()
 }
 
+type statter [4096]byte
+
+func (s *statter) ReadPath() (string, error) {
+	n, err := conn.Read(s[:lengthSize])
+	if err != nil {
+		return "", err
+	} else if n != lengthSize {
+		return "", io.ErrShortBuffer
+	}
+
+	pathLen := binary.LittleEndian.Uint16(s[:lengthSize])
+
+	n, err = conn.Read(s[:pathLen])
+	if err != nil {
+		return "", err
+	} else if n != int(pathLen) {
+		return "", io.ErrShortBuffer
+	}
+
+	return string(s[:pathLen]), nil
+}
+
+func (s *statter) WriteStat(stat *syscall.Stat_t) error {
+	binary.LittleEndian.AppendUint64(s[:0], stat.Ino)
+	binary.LittleEndian.AppendUint32(s[:8], stat.Mode)
+	binary.LittleEndian.AppendUint32(s[:12], stat.Nlink)
+	binary.LittleEndian.AppendUint32(s[:16], stat.Uid)
+	binary.LittleEndian.AppendUint32(s[:20], stat.Gid)
+	binary.LittleEndian.AppendUint64(s[:24], uint64(stat.Size))
+	binary.LittleEndian.AppendUint64(s[:32], uint64(stat.Mtim.Sec))
+
+	_, err := conn.Write(s[:40])
+
+	return err
+}
+
 func statLoop() error {
 	timeout := time.Second
 
 	flag.DurationVar(&timeout, "timeout", timeout, "timeout to wait for stat to finish")
 	flag.Parse()
 
-	var buf [4096]byte
+	var s statter
 
-	ch := make(chan uint64)
+	ch := make(chan *syscall.Stat_t)
 
 	for {
-		n, err := conn.Read(buf[:lengthSize])
+		path, err := s.ReadPath()
 		if err != nil {
 			return err
-		} else if n != lengthSize {
-			return io.ErrShortBuffer
 		}
-
-		pathLen := binary.LittleEndian.Uint16(buf[:lengthSize])
-
-		n, err = conn.Read(buf[:pathLen])
-		if err != nil {
-			return err
-		} else if n != int(pathLen) {
-			return io.ErrShortBuffer
-		}
-
-		go doStat(string(buf[:pathLen]), ch)
+		go doStat(path, ch)
 
 		select {
 		case <-time.After(timeout):
 			return ErrTimeout
-		case inode := <-ch:
-			_, err := conn.Write(binary.LittleEndian.AppendUint64(buf[:0], inode))
+		case stat := <-ch:
+			err := s.WriteStat(stat)
 			if err != nil {
 				return err
 			}
@@ -107,12 +131,14 @@ func statLoop() error {
 	}
 }
 
-func doStat(path string, ch chan uint64) {
+var statErr = new(syscall.Stat_t)
+
+func doStat(path string, ch chan *syscall.Stat_t) {
 	fi, err := stat(path)
 	if err != nil {
-		ch <- 0
+		ch <- statErr
 	} else {
-		ch <- fi.Sys().(*syscall.Stat_t).Ino
+		ch <- fi.Sys().(*syscall.Stat_t)
 	}
 }
 
@@ -138,7 +164,7 @@ func (w *walkWriter) pathCallback(entry *walk.Dirent) error {
 	binary.LittleEndian.AppendUint64(w.buf[:2], entry.Inode)
 	binary.LittleEndian.AppendUint32(w.buf[:10], uint32(entry.Type()))
 
-	_, err := os.Stdout.Write(buf)
+	_, err := conn.Write(buf)
 
 	return err
 }
@@ -151,7 +177,7 @@ func (w *walkWriter) errCallback(path string, err error) {
 	binary.LittleEndian.AppendUint64(w.buf[:2], 0)
 	binary.LittleEndian.AppendUint32(w.buf[:10], uint32(err.(syscall.Errno)))
 
-	os.Stdout.Write(append(w.buf[:14], path...))
+	conn.Write(append(w.buf[:14], path...))
 }
 
 func (w *walkWriter) writeError(err error) {
@@ -160,5 +186,5 @@ func (w *walkWriter) writeError(err error) {
 	errMsg := err.Error()
 
 	binary.LittleEndian.AppendUint16(w.buf[:2], uint16(len(errMsg)))
-	os.Stdout.Write(append(w.buf[:14], errMsg...))
+	conn.Write(append(w.buf[:14], errMsg...))
 }

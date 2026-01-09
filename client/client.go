@@ -28,21 +28,22 @@ package client
 import (
 	"errors"
 	"io"
+	"io/fs"
 
 	"github.com/wtsi-hgi/statter/internal/client"
 )
 
-type Statter func(string) (uint64, error)
+type Statter func(string) (fs.FileInfo, error)
 
 // CreateStatter runs the statter at the given path and returns the a function
-// which can be given paths to get an inode.
+// which can be given paths to get a fs.FileInfo.
 func CreateStatter(path string) (Statter, error) {
 	local, _, err := client.CreateStatter(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return func(path string) (uint64, error) {
+	return func(path string) (fs.FileInfo, error) {
 		return client.Stat(local, path)
 	}, nil
 }

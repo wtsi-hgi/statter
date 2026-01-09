@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -70,19 +71,19 @@ func TestStatRun(t *testing.T) {
 		fiB, err := os.Lstat(testPathB)
 		So(err, ShouldBeNil)
 
-		inode, err := internalclient.Stat(local, testPathA)
+		fi, err := internalclient.Stat(local, testPathA)
 		So(err, ShouldBeNil)
 
-		So(fiA.Sys().(*syscall.Stat_t).Ino, ShouldEqual, inode)
+		So(fiA.Sys().(*syscall.Stat_t).Ino, ShouldEqual, fi.Sys().(*syscall.Stat_t).Ino)
 
-		inode, err = internalclient.Stat(local, testPathB)
+		fi, err = internalclient.Stat(local, testPathB)
 		So(err, ShouldBeNil)
 
-		So(fiB.Sys().(*syscall.Stat_t).Ino, ShouldEqual, inode)
+		So(fiB.Sys().(*syscall.Stat_t).Ino, ShouldEqual, fi.Sys().(*syscall.Stat_t).Ino)
 
-		inode, err = internalclient.Stat(local, "/not/a/path")
-		So(err, ShouldBeNil)
-		So(inode, ShouldEqual, 0)
+		fi, err = internalclient.Stat(local, "/not/a/path")
+		So(err, ShouldEqual, fs.ErrInvalid)
+		So(fi, ShouldBeNil)
 
 		stat = func(string) (os.FileInfo, error) {
 			time.Sleep(time.Second * 5)
@@ -104,7 +105,7 @@ func startRun(remote io.ReadWriteCloser, errCh chan error) {
 	errCh <- err
 }
 
-var statter string
+var statterExe string
 
 func TestMain(m *testing.M) {
 	tmp, err := os.MkdirTemp("", "")
@@ -113,11 +114,11 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
-	statter = filepath.Join(tmp, "statter")
+	statterExe = filepath.Join(tmp, "statter")
 
 	var code int
 
-	if err := exec.Command("go", "build", "-o", statter).Run(); err != nil {
+	if err := exec.Command("go", "build", "-o", statterExe).Run(); err != nil {
 		fmt.Fprintf(os.Stderr, "unexpected error: %s", err)
 
 		code = 1
@@ -133,18 +134,41 @@ func TestStat(t *testing.T) {
 	Convey("You can use the stat client to stat files", t, func() {
 		t.TempDir()
 
-		conn, pid, err := internalclient.CreateStatter(statter)
+		conn, pid, err := internalclient.CreateStatter(statterExe)
 		So(err, ShouldBeNil)
 
-		_, err = internalclient.Stat(conn, statter)
+		fi, err := internalclient.Stat(conn, statterExe)
 		So(err, ShouldBeNil)
+
+		stat, err := os.Lstat(statterExe)
+		So(err, ShouldBeNil)
+
+		So(fi.Name(), ShouldEqual, stat.Name())
+		So(fi.Size(), ShouldEqual, stat.Size())
+		So(fi.ModTime(), ShouldEqual, stat.ModTime().Truncate(time.Second))
+		So(fi.Mode(), ShouldEqual, stat.Mode())
+		So(fi.IsDir(), ShouldEqual, stat.IsDir())
+
+		parent := filepath.Dir(statterExe)
+
+		fi, err = internalclient.Stat(conn, parent)
+		So(err, ShouldBeNil)
+
+		stat, err = os.Lstat(parent)
+		So(err, ShouldBeNil)
+
+		So(fi.Name(), ShouldEqual, stat.Name())
+		So(fi.Size(), ShouldEqual, stat.Size())
+		So(fi.ModTime(), ShouldEqual, stat.ModTime().Truncate(time.Second))
+		So(fi.Mode(), ShouldEqual, stat.Mode())
+		So(fi.IsDir(), ShouldEqual, stat.IsDir())
 
 		p, err := os.FindProcess(pid)
 		So(err, ShouldBeNil)
 
 		So(p.Kill(), ShouldBeNil)
 
-		_, err = internalclient.Stat(conn, statter)
+		_, err = internalclient.Stat(conn, statterExe)
 		So(err, ShouldEqual, io.EOF)
 	})
 }
@@ -157,7 +181,7 @@ func TestWalker(t *testing.T) {
 		foundPaths := make([]string, 0, len(paths))
 		gotErrors := []string{}
 
-		So(client.WalkPath(statter, tmp, func(entry *internalclient.Dirent) error {
+		So(client.WalkPath(statterExe, tmp, func(entry *internalclient.Dirent) error {
 			foundPaths = append(foundPaths, entry.Path)
 
 			return nil
@@ -175,7 +199,7 @@ func TestWalker(t *testing.T) {
 
 		Reset(func() { os.Chmod(filepath.Join(tmp, "1"), 0700) })
 
-		So(client.WalkPath(statter, tmp, func(entry *internalclient.Dirent) error {
+		So(client.WalkPath(statterExe, tmp, func(entry *internalclient.Dirent) error {
 			return nil
 		}, func(path string, err error) error {
 			gotErrors = append(gotErrors, fmt.Sprintf("%s: %s", path, err))
@@ -185,7 +209,7 @@ func TestWalker(t *testing.T) {
 		So(len(gotErrors), ShouldEqual, 1)
 		So(gotErrors[0], ShouldEqual, tmp+"/1/: permission denied")
 
-		err := client.WalkPath(statter, tmp, func(entry *internalclient.Dirent) error {
+		err := client.WalkPath(statterExe, tmp, func(entry *internalclient.Dirent) error {
 			return errors.New("bad!")
 		}, func(path string, err error) error {
 			return nil
@@ -193,7 +217,7 @@ func TestWalker(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldEqual, "bad!")
 
-		err = client.WalkPath(statter, "", nil, nil)
+		err = client.WalkPath(statterExe, "", nil, nil)
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldEqual, "invalid argument")
 	})
