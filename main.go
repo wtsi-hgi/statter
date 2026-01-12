@@ -117,6 +117,7 @@ func statLoop() error {
 		if err != nil {
 			return err
 		}
+
 		go doStat(path, ch)
 
 		select {
