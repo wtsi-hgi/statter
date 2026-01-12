@@ -100,7 +100,7 @@ func startRun(remote io.ReadWriteCloser, errCh chan error) {
 	conn = remote
 	err := run()
 
-	remote.Close()
+	remote.Close() //nolint:errcheck
 
 	errCh <- err
 }
@@ -126,7 +126,7 @@ func TestMain(m *testing.M) {
 		code = m.Run()
 	}
 
-	os.RemoveAll(tmp)
+	os.RemoveAll(tmp) //nolint:errcheck
 	os.Exit(code)
 }
 
@@ -181,7 +181,7 @@ func TestWalker(t *testing.T) {
 		foundPaths := make([]string, 0, len(paths))
 		gotErrors := []string{}
 
-		So(client.WalkPath(statterExe, tmp, func(entry *internalclient.Dirent) error {
+		So(client.WalkPath(statterExe, tmp, func(entry *client.Dirent) error {
 			foundPaths = append(foundPaths, entry.Path)
 
 			return nil
@@ -197,9 +197,9 @@ func TestWalker(t *testing.T) {
 
 		So(os.Chmod(filepath.Join(tmp, "1"), 0), ShouldBeNil)
 
-		Reset(func() { os.Chmod(filepath.Join(tmp, "1"), 0700) })
+		Reset(func() { os.Chmod(filepath.Join(tmp, "1"), 0700) }) //nolint:errcheck
 
-		So(client.WalkPath(statterExe, tmp, func(entry *internalclient.Dirent) error {
+		So(client.WalkPath(statterExe, tmp, func(entry *client.Dirent) error {
 			return nil
 		}, func(path string, err error) error {
 			gotErrors = append(gotErrors, fmt.Sprintf("%s: %s", path, err))
@@ -209,7 +209,7 @@ func TestWalker(t *testing.T) {
 		So(len(gotErrors), ShouldEqual, 1)
 		So(gotErrors[0], ShouldEqual, tmp+"/1/: permission denied")
 
-		err := client.WalkPath(statterExe, tmp, func(entry *internalclient.Dirent) error {
+		err := client.WalkPath(statterExe, tmp, func(entry *client.Dirent) error {
 			return errors.New("bad!")
 		}, func(path string, err error) error {
 			return nil

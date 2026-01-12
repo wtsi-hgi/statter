@@ -38,9 +38,6 @@ import (
 
 const userOnlyPerm = 0700
 
-const maxPathLength = 4096
-const maxFilenameLength = 256
-
 // non-ascii bytes could become \xXX (4x the length at worst), the two
 // speech-marks are +2 and a newline is +1.
 const maxQuotedPathLength = (maxPathLength+maxFilenameLength)*4 + 2 + 1
@@ -62,7 +59,7 @@ type bufferedFile struct {
 }
 
 func (b *bufferedFile) Close() error {
-	if err := b.Writer.Flush(); err != nil {
+	if err := b.Flush(); err != nil {
 		return err
 	}
 
@@ -122,7 +119,6 @@ type Files struct {
 	Paths    []string
 	filesI   int
 	filesMax int
-	mu       sync.RWMutex
 	mus      []sync.Mutex
 }
 

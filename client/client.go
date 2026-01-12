@@ -73,7 +73,7 @@ func WalkPath(exe, path string, cb PathCallback, errCB ErrCallback) error {
 				return nil
 			}
 
-			r.Close()
+			r.Close() //nolint:errcheck
 
 			return err
 		}

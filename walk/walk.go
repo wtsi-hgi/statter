@@ -41,6 +41,8 @@ import (
 )
 
 const walkers = 16
+const maxPathLength = 4096
+const maxFilenameLength = 256
 
 const (
 	dot    = ".\x00"
@@ -78,8 +80,8 @@ func New(cb PathCallback, includDirs, ignoreSymlinks bool) *Walker {
 }
 
 func (w *Walker) EnableStats(interval time.Duration, output StatsOutput) {
-	w.stats.interval = interval
-	w.stats.output = output
+	w.interval = interval
+	w.output = output
 }
 
 // ErrorCallback is a callback function you supply Walker.Walk(), and it
@@ -104,8 +106,8 @@ func (w *Walker) Walk(dir string, errCB ErrorCallback) error {
 	sortedRequestCh := make(chan *Dirent)
 	ctx, stop := context.WithCancel(context.Background())
 
-	if w.stats.output != nil {
-		defer w.stats.LogStats(ctx)()
+	if w.output != nil {
+		defer w.LogStats(ctx)()
 	}
 
 	for range walkers {
@@ -283,7 +285,7 @@ func (s *scanner) Next() bool {
 	s.dirent = (*dirent)(unsafe.Pointer(&s.read[0]))
 	s.read = s.read[s.Reclen:]
 
-	if s.dirent.Type == syscall.DT_UNKNOWN {
+	if s.Type == syscall.DT_UNKNOWN {
 		return s.getType()
 	}
 
@@ -296,7 +298,7 @@ func (s *scanner) getType() bool {
 	var stat syscall.Stat_t
 
 	if _, _, err := syscall.Syscall6(statCall, uintptr(s.fh),
-		uintptr(unsafe.Pointer(&s.dirent.Name)), uintptr(unsafe.Pointer(&stat)),
+		uintptr(unsafe.Pointer(&s.Name)), uintptr(unsafe.Pointer(&stat)),
 		symlinkNoFollow, 0, 0); err != 0 {
 		s.err = err
 
@@ -305,7 +307,7 @@ func (s *scanner) getType() bool {
 		return false
 	}
 
-	s.dirent.Type = modeToType(stat.Mode)
+	s.Type = modeToType(stat.Mode)
 
 	return true
 }
@@ -334,7 +336,7 @@ func (s *scanner) Get() ([]byte, uint8, uint64) {
 }
 
 func (s *scanner) getName() []byte {
-	name := unsafe.Slice(&s.Name, uintptr(s.Reclen)-unsafe.Offsetof(s.dirent.Name))
+	name := unsafe.Slice(&s.Name, uintptr(s.Reclen)-unsafe.Offsetof(s.dirent.Name)) //nolint:staticcheck
 
 	l := bytes.IndexByte(name, 0)
 	if l <= 0 || string(name[:2]) == dot || string(name[:3]) == dotdot {
@@ -402,5 +404,5 @@ func open(path *byte, stats *stats) (int, error) {
 func closeFH(fh int, stats *stats) {
 	defer stats.AddClose()
 
-	syscall.Close(fh)
+	syscall.Close(fh) //nolint:errcheck
 }

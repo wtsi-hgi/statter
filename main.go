@@ -184,7 +184,7 @@ func (w *walkWriter) errCallback(path string, err error) {
 	binary.LittleEndian.AppendUint64(w.buf[:2], 0)
 	binary.LittleEndian.AppendUint32(w.buf[:10], uint32(err.(syscall.Errno)))
 
-	conn.Write(append(w.buf[:14], path...))
+	conn.Write(append(w.buf[:14], path...)) //nolint:errcheck
 }
 
 func (w *walkWriter) writeError(err error) {
@@ -193,5 +193,5 @@ func (w *walkWriter) writeError(err error) {
 	errMsg := err.Error()
 
 	binary.LittleEndian.AppendUint16(w.buf[:2], uint16(len(errMsg)))
-	conn.Write(append(w.buf[:14], errMsg...))
+	conn.Write(append(w.buf[:14], errMsg...)) //nolint:errcheck
 }
