@@ -50,7 +50,7 @@ func Stat(c io.ReadWriter, path string) (fs.FileInfo, error) {
 }
 
 func writePath(w io.Writer, path string) error {
-	var buf [4]byte
+	var buf [2]byte
 
 	_, err := w.Write(binary.LittleEndian.AppendUint16(buf[:0], uint16(len(path))))
 	if err != nil {
@@ -107,7 +107,7 @@ func (f *fileInfo) Mode() fs.FileMode {
 }
 
 func getStat(name string, r io.Reader) (fs.FileInfo, error) {
-	var buf [40]byte
+	var buf [44]byte
 
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return nil, err
@@ -123,12 +123,12 @@ func getStat(name string, r io.Reader) (fs.FileInfo, error) {
 		data: syscall.Stat_t{
 			Ino:   inode,
 			Mode:  binary.LittleEndian.Uint32(buf[8:12]),
-			Nlink: binary.LittleEndian.Uint32(buf[12:16]),
-			Uid:   binary.LittleEndian.Uint32(buf[16:20]),
-			Gid:   binary.LittleEndian.Uint32(buf[20:24]),
-			Size:  int64(binary.LittleEndian.Uint64(buf[24:32])),
+			Nlink: readNlink(&buf),
+			Uid:   binary.LittleEndian.Uint32(buf[20:24]),
+			Gid:   binary.LittleEndian.Uint32(buf[24:28]),
+			Size:  int64(binary.LittleEndian.Uint64(buf[28:36])),
 			Mtim: syscall.Timespec{
-				Sec: int64(binary.LittleEndian.Uint64(buf[32:40])),
+				Sec: int64(binary.LittleEndian.Uint64(buf[36:44])),
 			},
 		},
 	}, nil

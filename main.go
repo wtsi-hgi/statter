@@ -91,13 +91,13 @@ func (s *statter) ReadPath() (string, error) {
 func (s *statter) WriteStat(stat *syscall.Stat_t) error {
 	binary.LittleEndian.AppendUint64(s[:0], stat.Ino)
 	binary.LittleEndian.AppendUint32(s[:8], stat.Mode)
-	binary.LittleEndian.AppendUint32(s[:12], stat.Nlink)
-	binary.LittleEndian.AppendUint32(s[:16], stat.Uid)
-	binary.LittleEndian.AppendUint32(s[:20], stat.Gid)
-	binary.LittleEndian.AppendUint64(s[:24], uint64(stat.Size))
-	binary.LittleEndian.AppendUint64(s[:32], uint64(stat.Mtim.Sec))
+	binary.LittleEndian.AppendUint64(s[:12], uint64(stat.Nlink))
+	binary.LittleEndian.AppendUint32(s[:20], stat.Uid)
+	binary.LittleEndian.AppendUint32(s[:24], stat.Gid)
+	binary.LittleEndian.AppendUint64(s[:28], uint64(stat.Size))
+	binary.LittleEndian.AppendUint64(s[:36], uint64(stat.Mtim.Sec))
 
-	_, err := conn.Write(s[:40])
+	_, err := conn.Write(s[:44])
 
 	return err
 }
