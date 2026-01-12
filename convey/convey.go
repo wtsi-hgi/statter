@@ -230,7 +230,6 @@ func So[T any](v T, m func(T, ...T) error, cs ...T) {
 		}
 
 		t.Fatal(err)
-
 	}
 
 	if testing.Verbose() {
