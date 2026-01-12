@@ -29,7 +29,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -82,7 +81,8 @@ func TestStatRun(t *testing.T) {
 		So(fiB.Sys().(*syscall.Stat_t).Ino, ShouldEqual, fi.Sys().(*syscall.Stat_t).Ino)
 
 		fi, err = internalclient.Stat(local, "/not/a/path")
-		So(err, ShouldEqual, fs.ErrInvalid)
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldEqual, "lstat /not/a/path: no such file or directory")
 		So(fi, ShouldBeNil)
 
 		stat = func(string) (os.FileInfo, error) {

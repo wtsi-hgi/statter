@@ -137,6 +137,12 @@ var statErr = new(syscall.Stat_t)
 func doStat(path string, ch chan *syscall.Stat_t) {
 	fi, err := stat(path)
 	if err != nil {
+		var sysErr syscall.Errno
+
+		errors.As(err, &sysErr)
+
+		statErr.Mode = uint32(sysErr)
+
 		ch <- statErr
 	} else {
 		ch <- fi.Sys().(*syscall.Stat_t)

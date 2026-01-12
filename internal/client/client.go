@@ -115,7 +115,11 @@ func getStat(name string, r io.Reader) (fs.FileInfo, error) {
 
 	inode := binary.LittleEndian.Uint64(buf[:8])
 	if inode == 0 {
-		return nil, fs.ErrInvalid
+		return nil, &os.PathError{
+			Op:   "lstat",
+			Path: name,
+			Err:  syscall.Errno(binary.LittleEndian.Uint32(buf[8:12])),
+		}
 	}
 
 	return &fileInfo{
