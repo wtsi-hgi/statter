@@ -36,6 +36,17 @@ import (
 	"time"
 )
 
+const (
+	inodeStart  = 0
+	modeStart   = 8
+	nlinkStart  = 12
+	uidStart    = 20
+	gidStart    = 24
+	sizeStart   = 28
+	mtimeStart  = 36
+	statBufSize = 44
+)
+
 // Stat takes the net.Conn from either the CreateConns or CreateStatter funcs
 // and sends a stat query for the path given.
 func Stat(c io.ReadWriter, path string) (fs.FileInfo, error) {
@@ -104,18 +115,18 @@ func (f *fileInfo) Mode() fs.FileMode { //nolint:gocyclo,funlen
 }
 
 func getStat(name string, r io.Reader) (fs.FileInfo, error) {
-	var buf [44]byte
+	var buf [statBufSize]byte
 
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
 		return nil, err
 	}
 
-	inode := binary.LittleEndian.Uint64(buf[:8])
+	inode := binary.LittleEndian.Uint64(buf[inodeStart:modeStart])
 	if inode == 0 {
 		return nil, &os.PathError{
 			Op:   "lstat",
 			Path: name,
-			Err:  syscall.Errno(binary.LittleEndian.Uint32(buf[8:12])),
+			Err:  syscall.Errno(binary.LittleEndian.Uint32(buf[modeStart:nlinkStart])),
 		}
 	}
 
@@ -123,13 +134,13 @@ func getStat(name string, r io.Reader) (fs.FileInfo, error) {
 		name: filepath.Base(name),
 		data: syscall.Stat_t{
 			Ino:   inode,
-			Mode:  binary.LittleEndian.Uint32(buf[8:12]),
+			Mode:  binary.LittleEndian.Uint32(buf[modeStart:nlinkStart]),
 			Nlink: readNlink(&buf),
-			Uid:   binary.LittleEndian.Uint32(buf[20:24]),
-			Gid:   binary.LittleEndian.Uint32(buf[24:28]),
-			Size:  int64(binary.LittleEndian.Uint64(buf[28:36])), //nolint:gosec
+			Uid:   binary.LittleEndian.Uint32(buf[uidStart:gidStart]),
+			Gid:   binary.LittleEndian.Uint32(buf[gidStart:sizeStart]),
+			Size:  int64(binary.LittleEndian.Uint64(buf[sizeStart:mtimeStart])), //nolint:gosec
 			Mtim: syscall.Timespec{
-				Sec: int64(binary.LittleEndian.Uint64(buf[36:44])), //nolint:gosec
+				Sec: int64(binary.LittleEndian.Uint64(buf[mtimeStart:statBufSize])), //nolint:gosec
 			},
 		},
 	}, nil
