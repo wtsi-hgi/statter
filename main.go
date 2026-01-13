@@ -37,7 +37,7 @@ import (
 	"time"
 
 	"github.com/wtsi-hgi/statter/internal/client"
-	"github.com/wtsi-hgi/statter/walk"
+	"github.com/wtsi-hgi/walk"
 )
 
 const lengthSize = 2
