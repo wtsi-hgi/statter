@@ -32,78 +32,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"syscall"
+	"sort"
+	"strconv"
 	"testing"
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/wtsi-hgi/statter/client"
 	internalclient "github.com/wtsi-hgi/statter/internal/client"
-	"github.com/wtsi-hgi/statter/internal/helpers"
 )
-
-func TestStatRun(t *testing.T) {
-	Convey("You can stat files", t, func() {
-		a, b, err := os.Pipe()
-		So(err, ShouldBeNil)
-
-		c, d, err := os.Pipe()
-		So(err, ShouldBeNil)
-
-		errCh := make(chan error)
-
-		go startRun(internalclient.ReadWriter{Reader: a, WriteCloser: d}, errCh)
-
-		local := internalclient.ReadWriter{Reader: c, WriteCloser: b}
-
-		tmp := t.TempDir()
-
-		testPathA := filepath.Join(tmp, "aFile")
-		testPathB := filepath.Join(tmp, "bFile")
-
-		So(os.WriteFile(testPathA, []byte("some data"), 0600), ShouldBeNil)
-		So(os.WriteFile(testPathB, []byte("some data"), 0600), ShouldBeNil)
-
-		fiA, err := os.Lstat(testPathA)
-		So(err, ShouldBeNil)
-
-		fiB, err := os.Lstat(testPathB)
-		So(err, ShouldBeNil)
-
-		fi, err := internalclient.Stat(local, testPathA)
-		So(err, ShouldBeNil)
-
-		So(fiA.Sys().(*syscall.Stat_t).Ino, ShouldEqual, fi.Sys().(*syscall.Stat_t).Ino)
-
-		fi, err = internalclient.Stat(local, testPathB)
-		So(err, ShouldBeNil)
-
-		So(fiB.Sys().(*syscall.Stat_t).Ino, ShouldEqual, fi.Sys().(*syscall.Stat_t).Ino)
-
-		fi, err = internalclient.Stat(local, "/not/a/path")
-		So(err, ShouldNotBeNil)
-		So(err.Error(), ShouldEqual, "lstat /not/a/path: no such file or directory")
-		So(fi, ShouldBeNil)
-
-		stat = func(string) (os.FileInfo, error) {
-			time.Sleep(time.Second * 5)
-
-			return nil, ErrTimeout
-		}
-
-		_, err = internalclient.Stat(local, testPathA)
-		So(err, ShouldEqual, io.EOF)
-	})
-}
-
-func startRun(remote io.ReadWriteCloser, errCh chan error) {
-	conn = remote
-	err := run()
-
-	remote.Close() //nolint:errcheck
-
-	errCh <- err
-}
 
 var statterExe string
 
@@ -176,7 +113,7 @@ func TestStat(t *testing.T) {
 func TestWalker(t *testing.T) {
 	Convey("With a test directory to walk", t, func() {
 		tmp := t.TempDir()
-		paths := helpers.FillDirWithFiles(t, tmp, 3, nil)
+		paths := fillDirWithFiles(t, tmp, 3, nil)
 
 		foundPaths := make([]string, 0, len(paths))
 		gotErrors := []string{}
@@ -221,4 +158,38 @@ func TestWalker(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldEqual, "invalid argument")
 	})
+}
+
+// fillDirWithFiles fills the given directory with files, size dirs wide and
+// deep.
+func fillDirWithFiles(t *testing.T, dir string, size int, paths []string) []string {
+	t.Helper()
+
+	for i := range size {
+		base := strconv.Itoa(i + 1)
+		path := filepath.Join(dir, base)
+
+		filePath := path + ".file"
+		if len(paths) == 1 {
+			filePath += "\ntest"
+		}
+
+		paths = append(paths, path+"/", filePath)
+
+		if err := os.WriteFile(filePath, []byte(base), 0600); err != nil {
+			t.Fatalf("file creation failed: %s", err)
+		}
+
+		if err := os.Mkdir(path, os.ModePerm); err != nil {
+			t.Fatalf("mkdir failed: %s", err)
+		}
+
+		if size > 1 {
+			paths = fillDirWithFiles(t, path, size-1, paths)
+		}
+	}
+
+	sort.Strings(paths)
+
+	return paths
 }

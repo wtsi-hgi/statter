@@ -4,7 +4,7 @@ go 1.25.5
 
 require (
 	github.com/smartystreets/goconvey v1.8.1
-	github.com/wtsi-hgi/walk v1.0.0
+	github.com/wtsi-hgi/walk v1.0.1
 )
 
 require (

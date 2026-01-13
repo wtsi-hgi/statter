@@ -26,9 +26,7 @@
 package client
 
 import (
-	"bufio"
 	"encoding/binary"
-	"errors"
 	"io"
 	"io/fs"
 	"os"
@@ -36,11 +34,10 @@ import (
 	"path/filepath"
 	"syscall"
 	"time"
-	"unsafe"
 )
 
 // Stat takes the net.Conn from either the CreateConns or CreateStatter funcs
-// and sends an stat query for the path given.
+// and sends a stat query for the path given.
 func Stat(c io.ReadWriter, path string) (fs.FileInfo, error) {
 	if err := writePath(c, path); err != nil {
 		return nil, err
@@ -52,7 +49,7 @@ func Stat(c io.ReadWriter, path string) (fs.FileInfo, error) {
 func writePath(w io.Writer, path string) error {
 	var buf [2]byte
 
-	_, err := w.Write(binary.LittleEndian.AppendUint16(buf[:0], uint16(len(path))))
+	_, err := w.Write(binary.LittleEndian.AppendUint16(buf[:0], uint16(len(path)))) //nolint:gosec
 	if err != nil {
 		return err
 	}
@@ -73,7 +70,7 @@ func (f *fileInfo) ModTime() time.Time { return time.Unix(f.data.Mtim.Unix()) }
 func (f *fileInfo) IsDir() bool        { return f.Mode().IsDir() }
 func (f *fileInfo) Sys() any           { return &f.data }
 
-func (f *fileInfo) Mode() fs.FileMode {
+func (f *fileInfo) Mode() fs.FileMode { //nolint:gocyclo,funlen
 	mode := fs.FileMode(f.data.Mode) & fs.ModePerm
 
 	switch f.data.Mode & syscall.S_IFMT {
@@ -130,9 +127,9 @@ func getStat(name string, r io.Reader) (fs.FileInfo, error) {
 			Nlink: readNlink(&buf),
 			Uid:   binary.LittleEndian.Uint32(buf[20:24]),
 			Gid:   binary.LittleEndian.Uint32(buf[24:28]),
-			Size:  int64(binary.LittleEndian.Uint64(buf[28:36])),
+			Size:  int64(binary.LittleEndian.Uint64(buf[28:36])), //nolint:gosec
 			Mtim: syscall.Timespec{
-				Sec: int64(binary.LittleEndian.Uint64(buf[36:44])),
+				Sec: int64(binary.LittleEndian.Uint64(buf[36:44])), //nolint:gosec
 			},
 		},
 	}, nil
@@ -147,7 +144,7 @@ type ReadWriter struct {
 // CreateStatter runs the statter at the given path and returns the net.Conn
 // used to communicate with it.
 func CreateStatter(exe string) (io.ReadWriteCloser, int, error) {
-	cmd := exec.Command(exe)
+	cmd := exec.Command(exe) //nolint:noctx
 
 	in, err := cmd.StdinPipe()
 	if err != nil {
@@ -164,103 +161,4 @@ func CreateStatter(exe string) (io.ReadWriteCloser, int, error) {
 	}
 
 	return ReadWriter{Reader: out, WriteCloser: in}, cmd.Process.Pid, nil
-}
-
-type walker struct {
-	*bufio.Reader
-	cmd *exec.Cmd
-}
-
-func (w *walker) Close() error {
-	return w.cmd.Process.Kill()
-}
-
-// CreateWalker starts a file walk for the given path, using the given statter
-// executable.
-func CreateWalker(exe, path string) (io.ReadCloser, error) {
-	cmd := exec.Command(exe, path)
-
-	cmd.Stderr = os.Stderr
-
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-
-	return &walker{bufio.NewReader(out), cmd}, nil
-}
-
-// Dirent contains information for a single path entry discovered during the
-// walk.
-type Dirent struct {
-	Path  string
-	Mode  fs.FileMode
-	Inode uint64
-}
-
-// PathCallback is a function that can recieve DirEnts.
-type PathCallback func(entry *Dirent) error
-
-// PathCallback is a function that can recieve errors encountered for a path
-// during the walk.
-type ErrCallback func(string, error) error
-
-// ReaddirEnt will read a single directory entry from the given Reader and pass
-// either a DirEnt to the PathCallback or the path and an error to the
-// ErrCallback.
-func ReadDirEnt(r io.ReadCloser, cb PathCallback, errCB ErrCallback) error {
-	var buf [14]byte
-
-	_, err := io.ReadFull(r, buf[:])
-	if err != nil {
-		return err
-	}
-
-	pathLen := binary.LittleEndian.Uint16(buf[:2])
-	if pathLen == 0 {
-		return readError(r, binary.LittleEndian.Uint16(buf[2:]))
-	}
-
-	return readDirEnt(r, pathLen, &buf, cb, errCB)
-}
-
-func readDirEnt(r io.Reader, pl uint16, buf *[14]byte, cb PathCallback, errCB ErrCallback) error {
-	pathBuf := make([]byte, pl)
-
-	_, err := io.ReadFull(r, pathBuf)
-	if err != nil {
-		if errors.Is(err, io.EOF) {
-			return io.ErrUnexpectedEOF
-		}
-
-		return err
-	}
-
-	path := unsafe.String(unsafe.SliceData(pathBuf), pl)
-	inode := binary.LittleEndian.Uint64(buf[2:10])
-	other := binary.LittleEndian.Uint32(buf[10:14])
-
-	if inode == 0 {
-		return errCB(path, syscall.Errno(other))
-	} else {
-		return cb(&Dirent{
-			Path:  path,
-			Mode:  fs.FileMode(other),
-			Inode: inode,
-		})
-	}
-}
-
-func readError(r io.Reader, errLen uint16) error {
-	errBuf := make([]byte, errLen)
-
-	if _, err := io.ReadFull(r, errBuf); err != nil {
-		return err
-	}
-
-	return errors.New(unsafe.String(unsafe.SliceData(errBuf), errLen))
 }
