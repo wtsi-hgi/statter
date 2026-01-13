@@ -36,8 +36,8 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/smartystreets/goconvey/convey"
 	"github.com/wtsi-hgi/statter/client"
-	. "github.com/wtsi-hgi/statter/convey"
 	internalclient "github.com/wtsi-hgi/statter/internal/client"
 	"github.com/wtsi-hgi/statter/internal/helpers"
 )
