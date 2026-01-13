@@ -16,6 +16,7 @@ const (
 	LenStart   = 0
 	InodeStart = 2
 	TypeStart  = 10
+	PathStart  = 14
 )
 
 type walker struct {

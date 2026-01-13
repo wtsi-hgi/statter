@@ -42,7 +42,7 @@ import (
 	internalclient "github.com/wtsi-hgi/statter/internal/client"
 )
 
-var statterExe string
+var statterExe string //nolint:gochecknoglobals
 
 func TestMain(m *testing.M) {
 	tmp, err := os.MkdirTemp("", "")
@@ -55,7 +55,7 @@ func TestMain(m *testing.M) {
 
 	var code int
 
-	if err := exec.Command("go", "build", "-o", statterExe).Run(); err != nil {
+	if err := exec.Command("go", "build", "-o", statterExe).Run(); err != nil { //nolint:noctx
 		fmt.Fprintf(os.Stderr, "unexpected error: %s", err)
 
 		code = 1
@@ -63,7 +63,7 @@ func TestMain(m *testing.M) {
 		code = m.Run()
 	}
 
-	os.RemoveAll(tmp) //nolint:errcheck
+	os.RemoveAll(tmp)
 	os.Exit(code)
 }
 
@@ -147,7 +147,7 @@ func TestWalker(t *testing.T) {
 		So(gotErrors[0], ShouldEqual, tmp+"/1/: permission denied")
 
 		err := client.WalkPath(statterExe, tmp, func(entry *client.Dirent) error {
-			return errors.New("bad!")
+			return errors.New("bad!") //nolint:err113
 		}, func(path string, err error) error {
 			return nil
 		})

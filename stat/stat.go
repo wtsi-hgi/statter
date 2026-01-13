@@ -47,7 +47,7 @@ func (s *statter) ReadPath() (string, error) {
 func (s *statter) WriteStat(stat *syscall.Stat_t) error {
 	binary.LittleEndian.AppendUint64(s[:0], stat.Ino)
 	binary.LittleEndian.AppendUint32(s[:8], stat.Mode)
-	binary.LittleEndian.AppendUint64(s[:12], uint64(stat.Nlink))
+	binary.LittleEndian.AppendUint64(s[:12], uint64(stat.Nlink)) //nolint:unconvert,nolintlint
 	binary.LittleEndian.AppendUint32(s[:20], stat.Uid)
 	binary.LittleEndian.AppendUint32(s[:24], stat.Gid)
 	binary.LittleEndian.AppendUint64(s[:28], uint64(stat.Size))     //nolint:gosec

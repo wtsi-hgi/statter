@@ -15,7 +15,7 @@ var conn io.Writer = os.Stdout //nolint:gochecknoglobals
 
 type walkWriter struct {
 	mu  sync.Mutex
-	buf [4096 + 8 + 4 + 2]byte
+	buf [4096 + client.PathStart]byte
 }
 
 func Do(path string) {
@@ -30,8 +30,8 @@ func (w *walkWriter) pathCallback(entry *walk.Dirent) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	buf := entry.AppendTo(w.buf[:14])
-	binary.LittleEndian.AppendUint16(w.buf[:client.LenStart], uint16(len(buf))-14) //nolint:gosec
+	buf := entry.AppendTo(w.buf[:client.PathStart])
+	binary.LittleEndian.AppendUint16(w.buf[:client.LenStart], uint16(len(buf))-client.PathStart) //nolint:gosec
 	binary.LittleEndian.AppendUint64(w.buf[:client.InodeStart], entry.Inode)
 	binary.LittleEndian.AppendUint32(w.buf[:client.TypeStart], uint32(entry.Type()))
 
@@ -46,7 +46,7 @@ func (w *walkWriter) errCallback(path string, err error) {
 
 	binary.LittleEndian.AppendUint16(w.buf[:client.LenStart], uint16(len(path))) //nolint:gosec
 	binary.LittleEndian.AppendUint64(w.buf[:client.InodeStart], 0)
-	binary.LittleEndian.AppendUint32(w.buf[:client.TypeStart], uint32(err.(syscall.Errno))) //nolint:errcheck,forcetypeassert,errorlint
+	binary.LittleEndian.AppendUint32(w.buf[:client.TypeStart], uint32(err.(syscall.Errno))) //nolint:errcheck,forcetypeassert,errorlint,lll
 
 	conn.Write(append(w.buf[:14], path...)) //nolint:errcheck
 }
