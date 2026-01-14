@@ -10,7 +10,7 @@ import (
 
 // FillDirWithFiles fills the given directory with files, size dirs wide and
 // deep.
-func FillDirWithFiles(t *testing.T, dir string, size int, paths []string) []string {
+func FillDirWithFiles(t *testing.T, dir string, size int, paths []string) []string { //nolint:gocognit
 	t.Helper()
 
 	for i := range size {
@@ -24,7 +24,7 @@ func FillDirWithFiles(t *testing.T, dir string, size int, paths []string) []stri
 
 		paths = append(paths, path+"/", filePath)
 
-		if err := os.WriteFile(filePath, []byte(base), 0600); err != nil {
+		if err := os.WriteFile(filePath, []byte(base), 0600); err != nil { //nolint:mnd
 			t.Fatalf("file creation failed: %s", err)
 		}
 

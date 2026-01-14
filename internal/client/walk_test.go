@@ -78,6 +78,6 @@ func makeDirEnt(t *testing.T, path string) *Dirent {
 	return &Dirent{
 		Path:  path,
 		Mode:  fi.Mode() &^ fs.ModePerm,
-		Inode: fi.Sys().(*syscall.Stat_t).Ino,
+		Inode: fi.Sys().(*syscall.Stat_t).Ino, //nolint:errcheck,forcetypeassert
 	}
 }
