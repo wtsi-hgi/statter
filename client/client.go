@@ -26,20 +26,56 @@
 package client
 
 import (
-	"github.com/wtsi-hgi/statter/internal"
+	"errors"
+	"io"
+	"io/fs"
+
+	"github.com/wtsi-hgi/statter/internal/client"
 )
 
-type Statter func(string) (uint64, error)
+type Statter func(string) (fs.FileInfo, error)
 
 // CreateStatter runs the statter at the given path and returns the a function
-// which can be given paths to get an inode.
+// which can be given paths to get a fs.FileInfo.
 func CreateStatter(path string) (Statter, error) {
-	local, _, err := internal.CreateStatter(path)
+	local, _, err := client.CreateStatter(path)
 	if err != nil {
 		return nil, err
 	}
 
-	return func(path string) (uint64, error) {
-		return internal.Stat(local, path)
+	return func(path string) (fs.FileInfo, error) {
+		return client.Stat(local, path)
 	}, nil
+}
+
+type Dirent = client.Dirent
+type PathCallback = client.PathCallback
+type ErrCallback = client.ErrCallback
+
+// WalkPath runs the statter at the given exe path and performs a walk for the
+// given path.
+//
+// For each path entry, the PathCallback will be called with the directory entry
+// details.
+//
+// For each non-fatal error, such as permission issues, the ErrCallback will be
+// called with the failing path and the error.
+func WalkPath(exe, path string, cb PathCallback, errCB ErrCallback) error {
+	r, err := client.CreateWalker(exe, path)
+	if err != nil {
+		return err
+	}
+
+	for {
+		err := client.ReadDirEnt(r, cb, errCB)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+
+			r.Close()
+
+			return err
+		}
+	}
 }

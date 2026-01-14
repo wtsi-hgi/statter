@@ -5,8 +5,11 @@
 --
     import "github.com/wtsi-hgi/statter/client"
 
-A simple program to get inodes for paths; useful for when the filesystem might
-be unreliable and you want to be able to provide a timeout for the stat call.
+A simple program to get either stat information for paths, or to perform a
+directory walk and retrieve directory entry information; useful for when the
+filesystem might be unreliable and you want to be able to provide a timeout for
+the stat call, or when escalated privelages are required and a small attack
+surface is wanted.
 
 ## Installation
 
@@ -16,10 +19,11 @@ go install github.com/wtsi-hgi/statter@latest
 
 ## Usage
 
-The program needs reads length (little endian, uint16) prefixed strings from
-stdin and prints inodes (little endian, uint64) to stdout.
+There are client libraries for convenient access to both the `stat` and `walk`
+functionality.
 
-Any error is printed to stderr and the process is stopped with exit code 1.
+`client.CreateStatter` can be used to get a `os.Lstat` like function that can be
+given paths to stat.
 
-You can specify the `-timeout` flag to change the state timeout from the default
-`1s`.
+`client.WalkPath` can be used to walk a directory, the results of which will be
+passed to the given callbacks.

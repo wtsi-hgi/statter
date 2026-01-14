@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2025 Genome Research Ltd.
+ * Copyright (c) 2026 Genome Research Ltd.
  *
  * Author: Michael Woolnough <mw31@sanger.ac.uk>
  *
@@ -23,31 +23,10 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  ******************************************************************************/
 
-package main
+package client
 
-import (
-	"fmt"
-	"os"
+import "encoding/binary"
 
-	"github.com/wtsi-hgi/statter/internal/client"
-)
-
-const walkMode = 2
-
-func main() {
-	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
-
-		os.Exit(1)
-	}
-}
-
-func run() error {
-	if len(os.Args) == walkMode {
-		client.Walk(os.Args[1])
-
-		return nil
-	}
-
-	return client.Loop()
+func readNlink(buf *[statBufSize]byte) uint32 {
+	return binary.LittleEndian.Uint32(buf[nlinkStart:uidStart])
 }

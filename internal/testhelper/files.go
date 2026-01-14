@@ -1,5 +1,5 @@
 /*******************************************************************************
- * Copyright (c) 2025 Genome Research Ltd.
+ * Copyright (c) 2026 Genome Research Ltd.
  *
  * Author: Michael Woolnough <mw31@sanger.ac.uk>
  *
@@ -23,31 +23,46 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  ******************************************************************************/
 
-package main
+package testhelper
 
 import (
-	"fmt"
 	"os"
-
-	"github.com/wtsi-hgi/statter/internal/client"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"testing"
 )
 
-const walkMode = 2
+// FillDirWithFiles fills the given directory with files, size dirs wide and
+// deep.
+func FillDirWithFiles(t *testing.T, dir string, size int, paths []string) []string { //nolint:gocognit
+	t.Helper()
 
-func main() {
-	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+	for i := range size {
+		base := strconv.Itoa(i + 1)
+		path := filepath.Join(dir, base)
 
-		os.Exit(1)
+		filePath := path + ".file"
+		if len(paths) == 1 {
+			filePath += "\ntest"
+		}
+
+		paths = append(paths, path+"/", filePath)
+
+		if err := os.WriteFile(filePath, []byte(base), 0600); err != nil { //nolint:mnd
+			t.Fatalf("file creation failed: %s", err)
+		}
+
+		if err := os.Mkdir(path, os.ModePerm); err != nil {
+			t.Fatalf("mkdir failed: %s", err)
+		}
+
+		if size > 1 {
+			paths = FillDirWithFiles(t, path, size-1, paths)
+		}
 	}
-}
 
-func run() error {
-	if len(os.Args) == walkMode {
-		client.Walk(os.Args[1])
+	sort.Strings(paths)
 
-		return nil
-	}
-
-	return client.Loop()
+	return paths
 }
