@@ -29,8 +29,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/wtsi-hgi/statter/stat"
-	"github.com/wtsi-hgi/statter/walk"
+	"github.com/wtsi-hgi/statter/internal/client"
 )
 
 const walkMode = 2
@@ -45,10 +44,10 @@ func main() {
 
 func run() error {
 	if len(os.Args) == walkMode {
-		walk.Do(os.Args[1])
+		client.Walk(os.Args[1])
 
 		return nil
 	}
 
-	return stat.Loop()
+	return client.Loop()
 }

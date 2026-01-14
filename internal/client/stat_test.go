@@ -23,7 +23,7 @@
  * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  ******************************************************************************/
 
-package stat
+package client
 
 import (
 	"io"
@@ -34,10 +34,9 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-	internalclient "github.com/wtsi-hgi/statter/internal/client"
 )
 
-func TestStatRun(t *testing.T) {
+func TestStatLoop(t *testing.T) {
 	Convey("You can stat files", t, func() {
 		a, b, err := os.Pipe()
 		So(err, ShouldBeNil)
@@ -47,9 +46,9 @@ func TestStatRun(t *testing.T) {
 
 		errCh := make(chan error)
 
-		go startRun(internalclient.ReadWriter{Reader: a, WriteCloser: d}, errCh)
+		go startRun(readWriter{Reader: a, WriteCloser: d}, errCh)
 
-		local := internalclient.ReadWriter{Reader: c, WriteCloser: b}
+		local := readWriter{Reader: c, WriteCloser: b}
 
 		tmp := t.TempDir()
 
@@ -65,17 +64,17 @@ func TestStatRun(t *testing.T) {
 		fiB, err := os.Lstat(testPathB)
 		So(err, ShouldBeNil)
 
-		fi, err := internalclient.Stat(local, testPathA)
+		fi, err := Stat(local, testPathA)
 		So(err, ShouldBeNil)
 
 		So(fiA.Sys().(*syscall.Stat_t).Ino, ShouldEqual, fi.Sys().(*syscall.Stat_t).Ino) //nolint:errcheck,forcetypeassert
 
-		fi, err = internalclient.Stat(local, testPathB)
+		fi, err = Stat(local, testPathB)
 		So(err, ShouldBeNil)
 
 		So(fiB.Sys().(*syscall.Stat_t).Ino, ShouldEqual, fi.Sys().(*syscall.Stat_t).Ino) //nolint:errcheck,forcetypeassert
 
-		fi, err = internalclient.Stat(local, "/not/a/path")
+		fi, err = Stat(local, "/not/a/path")
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldEqual, "lstat /not/a/path: no such file or directory")
 		So(fi, ShouldBeNil)
@@ -86,7 +85,7 @@ func TestStatRun(t *testing.T) {
 			return nil, ErrTimeout
 		}
 
-		_, err = internalclient.Stat(local, testPathA)
+		_, err = Stat(local, testPathA)
 		So(err, ShouldEqual, io.EOF)
 	})
 }
