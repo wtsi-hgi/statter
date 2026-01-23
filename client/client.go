@@ -39,7 +39,7 @@ type Header func(string) (byte, error)
 // CreateStatter runs the statter at the given path, returning two functions and
 // a possible error.
 //
-// The first function can be used to perform the equivelant of an os.Lstat call.
+// The first function can be used to perform the equivalent of an os.Lstat call.
 //
 // The second function can be used to read the first byte fo a file.
 func CreateStatter(path string) (Statter, Header, error) {
