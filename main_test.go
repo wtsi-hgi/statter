@@ -68,8 +68,6 @@ func TestMain(m *testing.M) {
 
 func TestStat(t *testing.T) {
 	Convey("You can use the stat client to stat files", t, func() {
-		t.TempDir()
-
 		conn, pid, err := internalclient.CreateStatter(statterExe)
 		So(err, ShouldBeNil)
 
@@ -98,6 +96,40 @@ func TestStat(t *testing.T) {
 		So(fi.ModTime(), ShouldEqual, stat.ModTime().Truncate(time.Second))
 		So(fi.Mode(), ShouldEqual, stat.Mode())
 		So(fi.IsDir(), ShouldEqual, stat.IsDir())
+
+		p, err := os.FindProcess(pid)
+		So(err, ShouldBeNil)
+
+		So(p.Kill(), ShouldBeNil)
+
+		_, err = internalclient.Stat(conn, statterExe)
+		So(err, ShouldEqual, io.EOF)
+	})
+}
+
+func TestHead(t *testing.T) {
+	Convey("You can use the stat client to head files", t, func() {
+		conn, pid, err := internalclient.CreateStatter(statterExe)
+		So(err, ShouldBeNil)
+
+		tmp := t.TempDir()
+		testPathA := filepath.Join(tmp, "aFile")
+		testPathB := filepath.Join(tmp, "bFile")
+
+		So(os.WriteFile(testPathA, []byte("1some data"), 0600), ShouldBeNil)
+		So(os.WriteFile(testPathB, []byte("2some data"), 0600), ShouldBeNil)
+
+		byt, err := internalclient.Head(conn, testPathA)
+		So(err, ShouldBeNil)
+		So(byt, ShouldEqual, '1')
+
+		byt, err = internalclient.Head(conn, testPathB)
+		So(err, ShouldBeNil)
+		So(byt, ShouldEqual, '2')
+
+		byt, err = internalclient.Head(conn, "/not/a/path")
+		So(err.Error(), ShouldEqual, "read /not/a/path: no such file or directory")
+		So(byt, ShouldBeZeroValue)
 
 		p, err := os.FindProcess(pid)
 		So(err, ShouldBeNil)

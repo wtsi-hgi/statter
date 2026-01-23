@@ -49,7 +49,7 @@ const (
 	statBufSize = 44
 )
 
-const lengthSize = 2
+const modeLengthSize = 3
 
 var (
 	conn io.ReadWriter = readWriter{Reader: os.Stdin, WriteCloser: os.Stdout} //nolint:gochecknoglobals
@@ -59,20 +59,24 @@ var (
 	stat = os.Lstat //nolint:gochecknoglobals
 )
 
-// Stat takes the net.Conn from either the CreateConns or CreateStatter funcs
-// and sends a stat query for the path given.
+// Stat takes the net.Conn from CreateStatter and sends a stat query for the
+// path given.
 func Stat(c io.ReadWriter, path string) (fs.FileInfo, error) {
-	if err := writePath(c, path); err != nil {
+	if err := writePath(c, path, false); err != nil {
 		return nil, err
 	}
 
 	return getStat(path, c)
 }
 
-func writePath(w io.Writer, path string) error {
-	var buf [2]byte
+func writePath(w io.Writer, path string, head bool) error {
+	var buf [3]byte
 
-	_, err := w.Write(binary.LittleEndian.AppendUint16(buf[:0], uint16(len(path)))) //nolint:gosec
+	if head {
+		buf[0] = 1
+	}
+
+	_, err := w.Write(binary.LittleEndian.AppendUint16(buf[:1], uint16(len(path)))) //nolint:gosec
 	if err != nil {
 		return err
 	}
@@ -191,24 +195,25 @@ func CreateStatter(exe string) (io.ReadWriteCloser, int, error) {
 type statter [4096]byte
 
 // readPath reads a length-prefixed path from stdin.
-func (s *statter) readPath() (string, error) {
-	n, err := conn.Read(s[:lengthSize])
+func (s *statter) readPath() (string, bool, error) {
+	n, err := conn.Read(s[:modeLengthSize])
 	if err != nil {
-		return "", err
-	} else if n != lengthSize {
-		return "", io.ErrShortBuffer
+		return "", false, err
+	} else if n != modeLengthSize {
+		return "", false, io.ErrShortBuffer
 	}
 
-	pathLen := binary.LittleEndian.Uint16(s[:lengthSize])
+	head := s[0] == 1
+	pathLen := binary.LittleEndian.Uint16(s[1:modeLengthSize])
 
 	n, err = conn.Read(s[:pathLen])
 	if err != nil {
-		return "", err
+		return "", false, err
 	} else if n != int(pathLen) {
-		return "", io.ErrShortBuffer
+		return "", false, io.ErrShortBuffer
 	}
 
-	return string(s[:pathLen]), nil
+	return string(s[:pathLen]), head, nil
 }
 
 // writeStat writes the inode, mode, nlink, uid, gid, size, and mtime to stdout
@@ -237,26 +242,40 @@ func Loop() error {
 
 	var s statter
 
-	ch := make(chan *syscall.Stat_t)
-
 	for {
-		path, err := s.readPath()
+		path, isHead, err := s.readPath()
 		if err != nil {
 			return err
 		}
 
-		go doStat(path, ch)
+		if isHead {
+			err = s.headPath(path, timeout)
+		} else {
+			err = s.statPath(path, timeout)
+		}
 
-		select {
-		case <-time.After(timeout):
-			return ErrTimeout
-		case stat := <-ch:
-			err := s.writeStat(stat)
-			if err != nil {
-				return err
-			}
+		if err != nil {
+			return err
 		}
 	}
+}
+
+func (s *statter) statPath(path string, timeout time.Duration) error {
+	ch := make(chan *syscall.Stat_t)
+
+	go doStat(path, ch)
+
+	select {
+	case <-time.After(timeout):
+		return ErrTimeout
+	case stat := <-ch:
+		err := s.writeStat(stat)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 var statErr = new(syscall.Stat_t) //nolint:gochecknoglobals
@@ -264,11 +283,7 @@ var statErr = new(syscall.Stat_t) //nolint:gochecknoglobals
 func doStat(path string, ch chan *syscall.Stat_t) {
 	fi, err := stat(path)
 	if err != nil {
-		var sysErr syscall.Errno
-
-		errors.As(err, &sysErr)
-
-		statErr.Mode = uint32(sysErr)
+		statErr.Mode = errNo(err)
 
 		ch <- statErr
 	} else {

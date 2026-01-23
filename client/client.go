@@ -34,18 +34,25 @@ import (
 )
 
 type Statter func(string) (fs.FileInfo, error)
+type Header func(string) (byte, error)
 
-// CreateStatter runs the statter at the given path and returns the a function
-// which can be given paths to get a fs.FileInfo.
-func CreateStatter(path string) (Statter, error) {
+// CreateStatter runs the statter at the given path, returning two functions and
+// a possible error.
+//
+// The first function can be used to perform the equivalent of an os.Lstat call.
+//
+// The second function can be used to read the first byte fo a file.
+func CreateStatter(path string) (Statter, Header, error) {
 	local, _, err := client.CreateStatter(path)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	return func(path string) (fs.FileInfo, error) {
-		return client.Stat(local, path)
-	}, nil
+			return client.Stat(local, path)
+		}, func(path string) (byte, error) {
+			return client.Head(local, path)
+		}, nil
 }
 
 type Dirent = client.Dirent
