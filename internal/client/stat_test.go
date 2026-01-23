@@ -55,8 +55,8 @@ func TestStatLoop(t *testing.T) {
 		testPathA := filepath.Join(tmp, "aFile")
 		testPathB := filepath.Join(tmp, "bFile")
 
-		So(os.WriteFile(testPathA, []byte("some data"), 0600), ShouldBeNil)
-		So(os.WriteFile(testPathB, []byte("some data"), 0600), ShouldBeNil)
+		So(os.WriteFile(testPathA, []byte("1some data"), 0600), ShouldBeNil)
+		So(os.WriteFile(testPathB, []byte("2some data"), 0600), ShouldBeNil)
 
 		fiA, err := os.Lstat(testPathA)
 		So(err, ShouldBeNil)
@@ -78,6 +78,19 @@ func TestStatLoop(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err.Error(), ShouldEqual, "lstat /not/a/path: no such file or directory")
 		So(fi, ShouldBeNil)
+
+		byt, err := Head(local, testPathA)
+		So(err, ShouldBeNil)
+		So(byt, ShouldEqual, '1')
+
+		byt, err = Head(local, testPathB)
+		So(err, ShouldBeNil)
+		So(byt, ShouldEqual, '2')
+
+		byt, err = Head(local, "/not/a/path")
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldEqual, "read /not/a/path: no such file or directory")
+		So(byt, ShouldBeZeroValue)
 
 		stat = func(string) (os.FileInfo, error) {
 			time.Sleep(time.Second * 5)
