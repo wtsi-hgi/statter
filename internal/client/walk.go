@@ -100,6 +100,10 @@ func ReadDirEnt(r io.ReadCloser, cb PathCallback, errCB ErrCallback) error {
 
 	_, err := io.ReadFull(r, buf[:])
 	if err != nil {
+		if errors.Is(err, fs.ErrClosed) {
+			return io.EOF
+		}
+
 		return err
 	}
 

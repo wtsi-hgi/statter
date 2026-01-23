@@ -29,6 +29,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"syscall"
 	"time"
@@ -50,6 +51,10 @@ func getByte(path string, r io.Reader) (byte, error) {
 	var buf [headBufSize]byte
 
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		if errors.Is(err, fs.ErrClosed) {
+			return 0, io.EOF
+		}
+
 		return 0, err
 	}
 
