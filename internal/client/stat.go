@@ -78,6 +78,10 @@ func writePath(w io.Writer, path string, head bool) error {
 
 	_, err := w.Write(binary.LittleEndian.AppendUint16(buf[:1], uint16(len(path)))) //nolint:gosec
 	if err != nil {
+		if errors.Is(err, fs.ErrClosed) {
+			return io.EOF
+		}
+
 		return err
 	}
 
@@ -134,6 +138,10 @@ func getStat(name string, r io.Reader) (fs.FileInfo, error) {
 	var buf [statBufSize]byte
 
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
+		if errors.Is(err, fs.ErrClosed) {
+			return nil, io.EOF
+		}
+
 		return nil, err
 	}
 
