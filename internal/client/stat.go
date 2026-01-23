@@ -134,7 +134,7 @@ func (f *fileInfo) Mode() fs.FileMode { //nolint:gocyclo,funlen
 	return mode
 }
 
-func getStat(name string, r io.Reader) (fs.FileInfo, error) {
+func getStat(name string, r io.Reader) (fs.FileInfo, error) { //nolint:funlen
 	var buf [statBufSize]byte
 
 	if _, err := io.ReadFull(r, buf[:]); err != nil {
