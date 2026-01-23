@@ -183,6 +183,8 @@ func CreateStatter(exe string) (io.ReadWriteCloser, int, error) {
 		return nil, 0, err
 	}
 
+	go cmd.Wait()
+
 	return readWriter{Reader: out, WriteCloser: in}, cmd.Process.Pid, nil
 }
 

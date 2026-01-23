@@ -72,6 +72,8 @@ func CreateWalker(exe, path string) (io.ReadCloser, error) {
 		return nil, err
 	}
 
+	go cmd.Wait()
+
 	return &walker{bufio.NewReader(out), cmd}, nil
 }
 
