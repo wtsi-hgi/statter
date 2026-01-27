@@ -53,6 +53,8 @@ type walker struct {
 }
 
 func (w *walker) Close() error {
+	go w.cmd.Wait() //nolint:errcheck
+
 	return w.cmd.Process.Kill()
 }
 
@@ -71,8 +73,6 @@ func CreateWalker(exe, path string) (io.ReadCloser, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-
-	go cmd.Wait() //nolint:errcheck
 
 	return &walker{bufio.NewReader(out), cmd}, nil
 }
@@ -194,7 +194,7 @@ func (w *walkWriter) ErrCallback(path string, err error) {
 	binary.LittleEndian.AppendUint64(w.buf[:walkInodeStart], 0)
 	binary.LittleEndian.AppendUint32(w.buf[:typeStart], uint32(err.(syscall.Errno))) //nolint:errcheck,forcetypeassert,errorlint,lll
 
-	conn.Write(append(w.buf[:14], path...)) //nolint:errcheck
+	conn.Write(append(w.buf[:pathStart], path...)) //nolint:errcheck
 }
 
 // WriteError writes fatal errors to stdout.

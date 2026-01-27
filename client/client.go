@@ -73,14 +73,14 @@ func WalkPath(exe, path string, cb PathCallback, errCB ErrCallback) error {
 		return err
 	}
 
+	defer r.Close()
+
 	for {
 		err := client.ReadDirEnt(r, cb, errCB)
 		if err != nil {
 			if errors.Is(err, io.EOF) {
 				return nil
 			}
-
-			r.Close()
 
 			return err
 		}
