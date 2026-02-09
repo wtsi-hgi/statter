@@ -88,7 +88,7 @@ func (s *statter) headPath(path string, timeout time.Duration) error {
 }
 
 func (s *statter) doHead(path string, ch chan<- struct{}) {
-	defer close(ch)
+	defer func() { ch <- struct{}{} }()
 
 	s[0] = 0
 

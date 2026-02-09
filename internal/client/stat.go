@@ -250,6 +250,22 @@ func Loop() error {
 
 	var s statter
 
+	headPath := make(chan string)
+	statPath := make(chan string)
+	headCh := make(chan struct{})
+	statCh := make(chan *syscall.Stat_t)
+
+	go s.do(statPath, headPath, statCh, headCh)
+
+	return s.doLoop(timeout, statPath, headPath, statCh, headCh)
+}
+
+func (s *statter) doLoop( //nolint:gocognit,gocyclo
+	timeout time.Duration,
+	statPath, headPath chan<- string,
+	statCh <-chan *syscall.Stat_t,
+	headCh <-chan struct{},
+) error {
 	for {
 		path, isHead, err := s.readPath()
 		if err != nil {
@@ -257,9 +273,18 @@ func Loop() error {
 		}
 
 		if isHead {
-			err = s.headPath(path, timeout)
+			headPath <- path
 		} else {
-			err = s.statPath(path, timeout)
+			statPath <- path
+		}
+
+		select {
+		case <-time.After(timeout):
+			return ErrTimeout
+		case <-headCh:
+			_, err = conn.Write(s[:headBufSize])
+		case stat := <-statCh:
+			err = s.writeStat(stat)
 		}
 
 		if err != nil {
@@ -268,27 +293,20 @@ func Loop() error {
 	}
 }
 
-func (s *statter) statPath(path string, timeout time.Duration) error {
-	ch := make(chan *syscall.Stat_t)
-
-	go doStat(path, ch)
-
-	select {
-	case <-time.After(timeout):
-		return ErrTimeout
-	case stat := <-ch:
-		err := s.writeStat(stat)
-		if err != nil {
-			return err
+func (s *statter) do(statPath, headPath <-chan string, statCh chan<- *syscall.Stat_t, headCh chan<- struct{}) {
+	for {
+		select {
+		case path := <-statPath:
+			doStat(path, statCh)
+		case path := <-headPath:
+			s.doHead(path, headCh)
 		}
 	}
-
-	return nil
 }
 
 var statErr = new(syscall.Stat_t) //nolint:gochecknoglobals
 
-func doStat(path string, ch chan *syscall.Stat_t) {
+func doStat(path string, ch chan<- *syscall.Stat_t) {
 	fi, err := stat(path)
 	if err != nil {
 		statErr.Mode = errNo(err)
