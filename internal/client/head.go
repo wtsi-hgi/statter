@@ -81,7 +81,9 @@ func (s *statter) doHead(path string, ch chan<- struct{}) {
 	}
 
 	_, err = f.Read(s[1:2])
-	if err != nil {
+	if errors.Is(err, io.EOF) {
+		s[1] = 0
+	} else if err != nil {
 		binary.LittleEndian.AppendUint32(s[:1], errNo(err))
 
 		return
