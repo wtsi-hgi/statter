@@ -32,7 +32,6 @@ import (
 	"io/fs"
 	"os"
 	"syscall"
-	"time"
 )
 
 const headBufSize = 5
@@ -67,24 +66,6 @@ func getByte(path string, r io.Reader) (byte, error) {
 		Path: path,
 		Err:  syscall.Errno(binary.LittleEndian.Uint32(buf[1:headBufSize])),
 	}
-}
-
-func (s *statter) headPath(path string, timeout time.Duration) error {
-	ch := make(chan struct{})
-
-	go s.doHead(path, ch)
-
-	select {
-	case <-time.After(timeout):
-		return ErrTimeout
-	case <-ch:
-		_, err := conn.Write(s[:headBufSize])
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (s *statter) doHead(path string, ch chan<- struct{}) {
