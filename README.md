@@ -24,7 +24,7 @@ functionality.
 
 `client.CreateStatter` can be used to get a `os.Lstat` like function, that can
 be given paths to stat, a 'Head' function that will read the first byte of a
-file, and a 'Readlink` function that will read the target of a symlink.
+file, and a `Readlink` function that will read the target of a symlink.
 
 `client.WalkPath` can be used to walk a directory, the results of which will be
 passed to the given callbacks.

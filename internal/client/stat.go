@@ -227,11 +227,8 @@ func (s *statter) readPath() (string, mode, error) {
 		return "", 0, ErrInvalidMode
 	}
 
-	n, err = conn.Read(s[:pathLen])
-	if err != nil {
+	if _, err = io.ReadFull(conn, s[:pathLen]); err != nil {
 		return "", 0, err
-	} else if n != int(pathLen) {
-		return "", 0, io.ErrShortBuffer
 	}
 
 	return string(s[:pathLen]), m, nil
@@ -315,7 +312,8 @@ func (s *statter) doLoop( //nolint:gocyclo,cyclop,funlen
 }
 
 func (s *statter) do(statPath, headPath, readlinkPath <-chan string,
-	statCh chan<- *syscall.Stat_t, headCh chan<- struct{}, readlinkCh chan<- link) {
+	statCh chan<- *syscall.Stat_t, headCh chan<- struct{}, readlinkCh chan<- link,
+) {
 	for {
 		select {
 		case path := <-statPath:
