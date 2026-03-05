@@ -98,12 +98,7 @@ type ErrCallback func(string, error) error
 func ReadDirEnt(r io.ReadCloser, cb PathCallback, errCB ErrCallback) error {
 	var buf [14]byte
 
-	_, err := io.ReadFull(r, buf[:])
-	if err != nil {
-		if errors.Is(err, fs.ErrClosed) {
-			return io.EOF
-		}
-
+	if err := readBuf(r, buf[:]); err != nil {
 		return err
 	}
 

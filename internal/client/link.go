@@ -29,68 +29,83 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
+	"io/fs"
 	"os"
 	"syscall"
 )
 
-const headBufSize = 5
-
-// Head takes the net.Conn from CreateStatter and sends a byte read query for
-// the path given.
-func Head(c io.ReadWriter, path string) (byte, error) {
-	if err := writePath(c, path, modeHead); err != nil {
-		return 0, err
+// Readlink takes the net.Conn from CreateStatter and readlink request for the
+// path given.
+func Readlink(c io.ReadWriter, path string) (string, error) {
+	if err := writePath(c, path, modeReadlink); err != nil {
+		return "", err
 	}
 
-	return getByte(path, c)
+	var buf [4]byte
+
+	if err := readBuf(c, buf[:2]); err != nil {
+		return "", err
+	}
+
+	l := binary.LittleEndian.Uint16(buf[:2])
+	if l == 0 {
+		if err := readBuf(c, buf[:]); err != nil {
+			return "", err
+		}
+
+		return "", &os.PathError{
+			Op:   "readlink",
+			Path: path,
+			Err:  syscall.Errno(binary.LittleEndian.Uint32(buf[:4])),
+		}
+	}
+
+	link := make([]byte, l)
+
+	if err := readBuf(c, link); err != nil {
+		return "", err
+	}
+
+	return string(link), nil
 }
 
-func getByte(path string, r io.Reader) (byte, error) {
-	var buf [headBufSize]byte
-
-	if err := readBuf(r, buf[:]); err != nil {
-		return 0, err
+func readBuf(c io.Reader, buf []byte) error {
+	_, err := io.ReadFull(c, buf)
+	if errors.Is(err, fs.ErrClosed) {
+		return io.EOF
 	}
 
-	if buf[0] == 1 {
-		return buf[1], nil
-	}
-
-	return 0, &os.PathError{
-		Op:   "read",
-		Path: path,
-		Err:  syscall.Errno(binary.LittleEndian.Uint32(buf[1:headBufSize])),
-	}
+	return err
 }
 
-func (s *statter) doHead(path string, ch chan<- struct{}) {
-	defer func() { ch <- struct{}{} }()
-
-	s[0] = 0
-
-	f, err := os.Open(path)
-	if err != nil {
-		binary.LittleEndian.AppendUint32(s[:1], errNo(err))
-
-		return
-	}
-
-	_, err = f.Read(s[1:2])
-	if errors.Is(err, io.EOF) {
-		s[1] = 0
-	} else if err != nil {
-		binary.LittleEndian.AppendUint32(s[:1], errNo(err))
-
-		return
-	}
-
-	s[0] = 1
+type link struct {
+	path string
+	err  uint32
 }
 
-func errNo(err error) uint32 {
-	var sysErr syscall.Errno
+func readLink(path string, readlinkCh chan<- link) {
+	l, err := os.Readlink(path)
 
-	errors.As(err, &sysErr)
+	readlinkCh <- link{l, errNo(err)}
+}
 
-	return uint32(sysErr)
+func (s *statter) writeLink(l link) error {
+	var buf [6]byte
+
+	if l.err == 0 {
+		_, err := conn.Write(binary.LittleEndian.AppendUint16(buf[:0], uint16(len(l.path)))) //nolint:gosec
+		if err != nil {
+			return err
+		}
+
+		_, err = io.WriteString(conn, l.path)
+
+		return err
+	}
+
+	binary.LittleEndian.AppendUint32(buf[:2], l.err)
+
+	_, err := conn.Write(buf[:])
+
+	return err
 }

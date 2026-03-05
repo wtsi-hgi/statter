@@ -142,7 +142,41 @@ func TestHead(t *testing.T) {
 
 		So(p.Kill(), ShouldBeNil)
 
-		_, err = internalclient.Stat(conn, statterExe)
+		_, err = internalclient.Head(conn, statterExe)
+		So(err, ShouldEqual, io.EOF)
+	})
+}
+
+func TestReadlink(t *testing.T) {
+	Convey("You can use the stat client to read symlink targets", t, func() {
+		conn, pid, err := internalclient.CreateStatter(statterExe)
+		So(err, ShouldBeNil)
+
+		tmp := t.TempDir()
+		testPathA := filepath.Join(tmp, "aFile")
+		testPathB := filepath.Join(tmp, "bFile")
+
+		So(os.Symlink("1some data", testPathA), ShouldBeNil)
+		So(os.Symlink("2some data", testPathB), ShouldBeNil)
+
+		target, err := internalclient.Readlink(conn, testPathA)
+		So(err, ShouldBeNil)
+		So(target, ShouldEqual, "1some data")
+
+		target, err = internalclient.Readlink(conn, testPathB)
+		So(err, ShouldBeNil)
+		So(target, ShouldEqual, "2some data")
+
+		target, err = internalclient.Readlink(conn, "/not/a/path")
+		So(err.Error(), ShouldEqual, "readlink /not/a/path: no such file or directory")
+		So(target, ShouldBeZeroValue)
+
+		p, err := os.FindProcess(pid)
+		So(err, ShouldBeNil)
+
+		So(p.Kill(), ShouldBeNil)
+
+		_, err = internalclient.Readlink(conn, statterExe)
 		So(err, ShouldEqual, io.EOF)
 	})
 }
