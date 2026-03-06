@@ -39,13 +39,13 @@ type (
 	Readlinker func(string) (string, error)
 )
 
-// CreateStatter runs the statter at the given path, returning two functions and
-// a possible error.
+// CreateStatter runs the statter at the given path, returning three functions
+// and a possible error.
 //
 // The first function can be used to perform the equivalent of an os.Lstat call.
 //
-// The second function can be used to read the first byte fo a file.
-
+// The second function can be used to read the first byte of a file.
+//
 // The third function can be used to perform the equivalent of an os.Readlink
 // call.
 func CreateStatter(path string) (Statter, Header, Readlinker, error) {
