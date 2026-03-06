@@ -115,9 +115,11 @@ func TestHead(t *testing.T) {
 		tmp := t.TempDir()
 		testPathA := filepath.Join(tmp, "aFile")
 		testPathB := filepath.Join(tmp, "bFile")
+		testPathC := filepath.Join(tmp, "cFile")
 
 		So(os.WriteFile(testPathA, []byte("1some data"), 0600), ShouldBeNil)
 		So(os.WriteFile(testPathB, []byte("2some data"), 0600), ShouldBeNil)
+		So(os.WriteFile(testPathC, []byte(""), 0600), ShouldBeNil)
 
 		byt, err := internalclient.Head(conn, testPathA)
 		So(err, ShouldBeNil)
@@ -126,6 +128,10 @@ func TestHead(t *testing.T) {
 		byt, err = internalclient.Head(conn, testPathB)
 		So(err, ShouldBeNil)
 		So(byt, ShouldEqual, '2')
+
+		byt, err = internalclient.Head(conn, testPathC)
+		So(err, ShouldBeNil)
+		So(byt, ShouldEqual, 0)
 
 		byt, err = internalclient.Head(conn, "/not/a/path")
 		So(err.Error(), ShouldEqual, "read /not/a/path: no such file or directory")

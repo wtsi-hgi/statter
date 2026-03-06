@@ -54,9 +54,11 @@ func TestStatLoop(t *testing.T) {
 
 		testPathA := filepath.Join(tmp, "aFile")
 		testPathB := filepath.Join(tmp, "bFile")
+		testPathC := filepath.Join(tmp, "cFile")
 
 		So(os.WriteFile(testPathA, []byte("1some data"), 0600), ShouldBeNil)
 		So(os.WriteFile(testPathB, []byte("2some data"), 0600), ShouldBeNil)
+		So(os.WriteFile(testPathC, []byte(""), 0600), ShouldBeNil)
 
 		fiA, err := os.Lstat(testPathA)
 		So(err, ShouldBeNil)
@@ -86,6 +88,10 @@ func TestStatLoop(t *testing.T) {
 		byt, err = Head(local, testPathB)
 		So(err, ShouldBeNil)
 		So(byt, ShouldEqual, '2')
+
+		byt, err = Head(local, testPathC)
+		So(err, ShouldBeNil)
+		So(byt, ShouldEqual, 0)
 
 		byt, err = Head(local, "/not/a/path")
 		So(err, ShouldNotBeNil)
