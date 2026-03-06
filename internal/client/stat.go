@@ -213,11 +213,8 @@ const (
 
 // readPath reads a length-prefixed path from stdin.
 func (s *statter) readPath() (string, mode, error) {
-	n, err := conn.Read(s[:modeLengthSize])
-	if err != nil {
+	if err := readBuf(conn, s[:modeLengthSize]); err != nil {
 		return "", 0, err
-	} else if n != modeLengthSize {
-		return "", 0, io.ErrShortBuffer
 	}
 
 	pathLen := binary.LittleEndian.Uint16(s[1:modeLengthSize])
@@ -227,7 +224,7 @@ func (s *statter) readPath() (string, mode, error) {
 		return "", 0, ErrInvalidMode
 	}
 
-	if _, err = io.ReadFull(conn, s[:pathLen]); err != nil {
+	if err := readBuf(conn, s[:pathLen]); err != nil {
 		return "", 0, err
 	}
 
