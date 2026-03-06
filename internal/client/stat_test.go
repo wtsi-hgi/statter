@@ -98,6 +98,21 @@ func TestStatLoop(t *testing.T) {
 		So(err.Error(), ShouldEqual, "read /not/a/path: no such file or directory")
 		So(byt, ShouldBeZeroValue)
 
+		s := filepath.Join(tmp, "symlink")
+
+		const symTarget = "/path/to/some/file"
+
+		So(os.Symlink(symTarget, s), ShouldBeNil)
+
+		link, err := Readlink(local, s)
+		So(err, ShouldBeNil)
+		So(link, ShouldEqual, symTarget)
+
+		link, err = Readlink(local, "/not/a/symlink")
+		So(err, ShouldNotBeNil)
+		So(err.Error(), ShouldEqual, "readlink /not/a/symlink: no such file or directory")
+		So(link, ShouldEqual, "")
+
 		stat = func(string) (os.FileInfo, error) {
 			time.Sleep(time.Second * 5)
 

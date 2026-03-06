@@ -54,7 +54,8 @@ const modeLengthSize = 3
 var (
 	conn io.ReadWriter = readWriter{Reader: os.Stdin, WriteCloser: os.Stdout} //nolint:gochecknoglobals
 
-	ErrTimeout = errors.New("timeout")
+	ErrTimeout     = errors.New("timeout")
+	ErrInvalidMode = errors.New("invalid mode")
 
 	stat = os.Lstat //nolint:gochecknoglobals
 )
@@ -62,19 +63,17 @@ var (
 // Stat takes the net.Conn from CreateStatter and sends a stat query for the
 // path given.
 func Stat(c io.ReadWriter, path string) (fs.FileInfo, error) {
-	if err := writePath(c, path, false); err != nil {
+	if err := writePath(c, path, modeStat); err != nil {
 		return nil, err
 	}
 
 	return getStat(path, c)
 }
 
-func writePath(w io.Writer, path string, head bool) error {
+func writePath(w io.Writer, path string, m mode) error {
 	var buf [3]byte
 
-	if head {
-		buf[0] = 1
-	}
+	buf[0] = byte(m)
 
 	_, err := w.Write(binary.LittleEndian.AppendUint16(buf[:1], uint16(len(path)))) //nolint:gosec
 	if err != nil {
@@ -137,7 +136,7 @@ func (f *fileInfo) Mode() fs.FileMode { //nolint:gocyclo,funlen
 func getStat(name string, r io.Reader) (fs.FileInfo, error) { //nolint:funlen
 	var buf [statBufSize]byte
 
-	if _, err := io.ReadFull(r, buf[:]); err != nil {
+	if err := readBuf(r, buf[:]); err != nil {
 		if errors.Is(err, fs.ErrClosed) {
 			return nil, io.EOF
 		}
@@ -202,26 +201,34 @@ func CreateStatter(exe string) (io.ReadWriteCloser, int, error) {
 
 type statter [4096]byte
 
+type mode uint8
+
+const (
+	modeStat mode = iota
+	modeHead
+	modeReadlink
+
+	invalidMode
+)
+
 // readPath reads a length-prefixed path from stdin.
-func (s *statter) readPath() (string, bool, error) {
-	n, err := conn.Read(s[:modeLengthSize])
-	if err != nil {
-		return "", false, err
-	} else if n != modeLengthSize {
-		return "", false, io.ErrShortBuffer
+func (s *statter) readPath() (string, mode, error) {
+	if err := readBuf(conn, s[:modeLengthSize]); err != nil {
+		return "", 0, err
 	}
 
-	head := s[0] == 1
 	pathLen := binary.LittleEndian.Uint16(s[1:modeLengthSize])
+	m := mode(s[0])
 
-	n, err = conn.Read(s[:pathLen])
-	if err != nil {
-		return "", false, err
-	} else if n != int(pathLen) {
-		return "", false, io.ErrShortBuffer
+	if m >= invalidMode {
+		return "", 0, ErrInvalidMode
 	}
 
-	return string(s[:pathLen]), head, nil
+	if err := readBuf(conn, s[:pathLen]); err != nil {
+		return "", 0, err
+	}
+
+	return string(s[:pathLen]), m, nil
 }
 
 // writeStat writes the inode, mode, nlink, uid, gid, size, and mtime to stdout
@@ -252,30 +259,36 @@ func Loop() error {
 
 	headPath := make(chan string)
 	statPath := make(chan string)
+	readlinkPath := make(chan string)
 	headCh := make(chan struct{})
 	statCh := make(chan *syscall.Stat_t)
+	readlinkCh := make(chan link)
 
-	go s.do(statPath, headPath, statCh, headCh)
+	go s.do(statPath, headPath, readlinkPath, statCh, headCh, readlinkCh)
 
-	return s.doLoop(timeout, statPath, headPath, statCh, headCh)
+	return s.doLoop(timeout, statPath, headPath, readlinkPath, statCh, headCh, readlinkCh)
 }
 
-func (s *statter) doLoop( //nolint:gocognit,gocyclo
+func (s *statter) doLoop( //nolint:gocyclo,cyclop,funlen
 	timeout time.Duration,
-	statPath, headPath chan<- string,
+	statPath, headPath, readlinkPath chan<- string,
 	statCh <-chan *syscall.Stat_t,
 	headCh <-chan struct{},
+	readlinkCh <-chan link,
 ) error {
 	for {
-		path, isHead, err := s.readPath()
+		path, mode, err := s.readPath()
 		if err != nil {
 			return err
 		}
 
-		if isHead {
+		switch mode { //nolint:exhaustive
+		case modeHead:
 			headPath <- path
-		} else {
+		case modeStat:
 			statPath <- path
+		case modeReadlink:
+			readlinkPath <- path
 		}
 
 		select {
@@ -285,6 +298,8 @@ func (s *statter) doLoop( //nolint:gocognit,gocyclo
 			_, err = conn.Write(s[:headBufSize])
 		case stat := <-statCh:
 			err = s.writeStat(stat)
+		case l := <-readlinkCh:
+			err = s.writeLink(l)
 		}
 
 		if err != nil {
@@ -293,13 +308,17 @@ func (s *statter) doLoop( //nolint:gocognit,gocyclo
 	}
 }
 
-func (s *statter) do(statPath, headPath <-chan string, statCh chan<- *syscall.Stat_t, headCh chan<- struct{}) {
+func (s *statter) do(statPath, headPath, readlinkPath <-chan string,
+	statCh chan<- *syscall.Stat_t, headCh chan<- struct{}, readlinkCh chan<- link,
+) {
 	for {
 		select {
 		case path := <-statPath:
 			doStat(path, statCh)
 		case path := <-headPath:
 			s.doHead(path, headCh)
+		case path := <-readlinkPath:
+			readLink(path, readlinkCh)
 		}
 	}
 }

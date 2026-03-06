@@ -33,31 +33,41 @@ import (
 	"github.com/wtsi-hgi/statter/internal/client"
 )
 
-type Statter func(string) (fs.FileInfo, error)
-type Header func(string) (byte, error)
+type (
+	Statter    func(string) (fs.FileInfo, error)
+	Header     func(string) (byte, error)
+	Readlinker func(string) (string, error)
+)
 
-// CreateStatter runs the statter at the given path, returning two functions and
-// a possible error.
+// CreateStatter runs the statter at the given path, returning three functions
+// and a possible error.
 //
 // The first function can be used to perform the equivalent of an os.Lstat call.
 //
-// The second function can be used to read the first byte fo a file.
-func CreateStatter(path string) (Statter, Header, error) {
+// The second function can be used to read the first byte of a file.
+//
+// The third function can be used to perform the equivalent of an os.Readlink
+// call.
+func CreateStatter(path string) (Statter, Header, Readlinker, error) {
 	local, _, err := client.CreateStatter(path)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 
 	return func(path string) (fs.FileInfo, error) {
 			return client.Stat(local, path)
 		}, func(path string) (byte, error) {
 			return client.Head(local, path)
+		}, func(path string) (string, error) {
+			return client.Readlink(local, path)
 		}, nil
 }
 
-type Dirent = client.Dirent
-type PathCallback = client.PathCallback
-type ErrCallback = client.ErrCallback
+type (
+	Dirent       = client.Dirent
+	PathCallback = client.PathCallback
+	ErrCallback  = client.ErrCallback
+)
 
 // WalkPath runs the statter at the given exe path and performs a walk for the
 // given path.
